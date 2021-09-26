@@ -21,7 +21,6 @@ var (
 	host   string
 	ifname string
 	ipv4   string
-	ipv6   string
 )
 
 func init() {
@@ -55,17 +54,15 @@ func main() {
 	for _, addr := range addrs {
 		slices := strings.Split(addr.String(), "/")
 		ip := net.ParseIP(slices[0])
-                if !ip.IsGlobalUnicast() {
-                    continue
-                }
+		if !ip.IsGlobalUnicast() {
+			continue
+		}
 		if ip.To4() != nil {
 			ipv4 = slices[0]
-		} else if 16 == len(ip) {
-			ipv6 = slices[0]
 		}
 	}
 
-	log.Printf("Checking host records for %v.%v are pointed at IPv4: %v and IPv6: %v", host, domain, ipv4, ipv6)
+	log.Printf("Checking host records for %v.%v are pointed at IPv4: %v", host, domain, ipv4)
 
 	// gandi.net API calls
 	uri := fmt.Sprintf("https://api.gandi.net/v5/livedns/domains/%v/records/%v", domain, host)
@@ -108,8 +105,8 @@ func main() {
 	res.Body.Close()
 
 	type HostRecord struct {
-		Rrset_type   string   `json:"rrset_type"`
-		Rrset_values []string `json:"rrset_values"`
+		RrsetType   string   `json:"rrset_type"`
+		RrsetValues []string `json:"rrset_values"`
 	}
 	var hostRecords []HostRecord
 	err = json.Unmarshal(body, &hostRecords)
@@ -123,8 +120,8 @@ func main() {
 
 		// create the records
 		hrec4 := HostRecord{
-			Rrset_type:   "A",
-			Rrset_values: []string{ipv4},
+			RrsetType:   "A",
+			RrsetValues: []string{ipv4},
 		}
 
 		payload, err := json.Marshal(&hrec4)
@@ -164,57 +161,14 @@ func main() {
 			os.Exit(2)
 		}
 
-		hrec6 := HostRecord{
-			Rrset_type:   "AAAA",
-			Rrset_values: []string{ipv6},
-		}
-
-		payload, err = json.Marshal(&hrec6)
-		if nil != err {
-			log.Printf("failed to serialize host record for IPv6: %v", err)
-			os.Exit(2)
-		}
-
-		req, err = http.NewRequest("POST", uri, bytes.NewBuffer(payload))
-		if nil != err {
-			log.Printf("failed to prepare IPv6 domain record creation request: %v", err)
-			os.Exit(2)
-		}
-
-		req.Header.Add("Authorization", fmt.Sprintf("Apikey %v", apiKey))
-		req.Header.Add("Content-Type", "application/json")
-		req.Header.Add("Accept", "application/json")
-
-		res, err = client.Do(req)
-		if nil != err {
-			log.Printf("failed to create IPv6 domain record: %v", err)
-			os.Exit(2)
-		}
-
-		body, err = ioutil.ReadAll(res.Body)
-		if nil != err {
-			log.Printf("failed to read response body: %v", err)
-			os.Exit(2)
-		}
-
-		log.Printf("Create IPv6 host record result: [%v] %v", res.Status, string(body))
-
-		res.Body.Close()
-
-		if 201 != res.StatusCode {
-			log.Printf("failed to create IPv6 domain record")
-			os.Exit(2)
-		}
-
-		log.Printf("Host records created.")
+		log.Printf("Host ipv4 record created.")
 		os.Exit(0)
 	}
 
 	// Verify the existing IP addresses
 	isUpdateRequired := false
 	for _, hr := range hostRecords {
-		if ("A" == hr.Rrset_type && ipv4 != hr.Rrset_values[0]) ||
-			("AAAA" == hr.Rrset_type && ipv6 != hr.Rrset_values[0]) {
+		if "A" == hr.RrsetType && ipv4 != hr.RrsetValues[0] {
 			isUpdateRequired = true
 		}
 	}
@@ -232,13 +186,11 @@ func main() {
 	}
 
 	updateItems := UpdateItems{
-		Items: []HostRecord{{
-			Rrset_type:   "A",
-			Rrset_values: []string{ipv4},
-		}, {
-			Rrset_type:   "AAAA",
-			Rrset_values: []string{ipv6},
-		},
+		Items: []HostRecord{
+			{
+				RrsetType:   "A",
+				RrsetValues: []string{ipv4},
+			},
 		},
 	}
 
